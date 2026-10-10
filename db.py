@@ -15,18 +15,16 @@ import os
 
 import pg8000.dbapi
 
-# psycopg2 permite `with conn.cursor() as cur:`; o cursor do pg8000 não. Os scripts usam esse
-# padrão, então ensinamos o cursor a ser um gerenciador de contexto (fecha ao sair do with).
+
 if not hasattr(pg8000.dbapi.Cursor, "__enter__"):
     pg8000.dbapi.Cursor.__enter__ = lambda self: self
     pg8000.dbapi.Cursor.__exit__ = lambda self, *exc: self.close()
 
-# O protocolo do Postgres aceita no máximo 65.535 parâmetros por comando.
+
 _MAX_PARAMS = 60_000
 
 
 def _ler_env(caminho):
-    """Lê um arquivo .env simples (CHAVE=valor, # comentários) sem sobrescrever o ambiente."""
     if not os.path.exists(caminho):
         return
     for linha in open(caminho, encoding="utf-8"):
@@ -38,10 +36,8 @@ def _ler_env(caminho):
 
 
 def config():
-    """Configuração do banco a partir de variáveis de ambiente ou do arquivo .env.
+    #Variáveis: PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD.
 
-    Variáveis: PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD (a senha é obrigatória).
-    """
     _ler_env(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
     if not os.environ.get("PGPASSWORD"):
         raise SystemExit("Defina PGPASSWORD (copie .env.example para .env e preencha).")

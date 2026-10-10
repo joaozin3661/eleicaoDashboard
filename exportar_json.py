@@ -1,20 +1,4 @@
-"""
-Gera os arquivos JSON que o site consome (sem banco em produção).
 
-Uso:
-    python exportar_json.py                  # escreve em web/public/data
-    python exportar_json.py --saida pasta    # outra pasta de saída
-
-O que faz:
-  1. Recria duas tabelas resumo no Postgres (votos por local x candidato e totais por
-     local x cargo), para o painel nunca precisar varrer o boletim cru (900 mil linhas).
-  2. Exporta JSON compactos: índice, candidatos, resultado do estado por cargo e um
-     arquivo por município (com os locais de votação, coordenadas e votos).
-  3. Confere que a soma dos votos exportados bate com o banco (aborta se não bater).
-
-Privacidade: só saem nome, partido, cargo, número e votos. A tabela `pessoas`
-(CPF, título de eleitor) NÃO é lida por este script.
-"""
 
 import json
 import os
@@ -120,7 +104,7 @@ def main(saida):
         tag = f"{ano}-{turno}"
         print(f"\n→ Eleição {ano}, turno {turno}")
 
-        # -- candidatos (somente os que aparecem na urna; sem CPF/título) --
+        # -- candidatos (somente os que aparecem na urna; sem CPF/título) 
         cands = consulta("""SELECT sq_candidato, nm_urna_candidato AS n, sg_partido AS p,
                                    nr_candidato AS nr, cd_cargo AS c, nm_candidato AS nc, id_pessoa AS pessoa
                             FROM v_candidaturas_votaveis WHERE ano_eleicao = %s""", (ano,))
@@ -128,7 +112,7 @@ def main(saida):
                {str(c["sq_candidato"]): {k: c[k] for k in ("n", "p", "nr", "c", "nc", "pessoa")}
                 for c in cands})
 
-        # -- locais de votação (só campos públicos e úteis ao mapa) --
+        # -- locais de votação (só campos públicos e úteis ao mapa) 
         locais = consulta("""SELECT cd_municipio, nr_zona, nr_local_votacao, nm_local_votacao AS nome,
                                     bairro, endereco, latitude AS lat, longitude AS lon,
                                     precisao_coordenada AS prec, ds_tipo_local AS tipo,

@@ -15,7 +15,7 @@ __pycache__/
 geocodificacao_cache.json
 geocodificacao_log.csv
 
-# Front-end (quando existir)
+# Front-end 
 node_modules/
 .next/
 web/out/

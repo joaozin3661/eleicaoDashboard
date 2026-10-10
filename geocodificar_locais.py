@@ -1,22 +1,4 @@
-"""
-Geocodifica os locais de votação que o TSE deixou sem coordenada.
 
-Uso:
-    python geocodificar_locais.py            # teste: busca e grava só o log (não altera o banco)
-    python geocodificar_locais.py --gravar   # grava no banco as coordenadas aprovadas
-
-Fonte: Nominatim (OpenStreetMap), ~1 requisição/segundo (política de uso).
-Regras de segurança:
-  - o resultado precisa citar o município e cair na área dos outros locais dele;
-  - resultado que é um estabelecimento só vale se o nome bater (não aceita "outra
-    escola da mesma rua"); riacho, estrada e igreja de outro nome são recusados;
-  - cada ponto recebe uma PRECISÃO: 'exata' (prédio achado pelo nome), 'rua'
-    (centro da rua) ou 'povoado' (centro do povoado/localidade);
-  - nunca usa o centro do município como se fosse o local;
-  - não sobrescreve coordenada que já existe.
-Os resultados ficam em geocodificacao_log.csv (inclusive o que não foi achado)
-e em geocodificacao_cache.json (reexecutar não repete buscas).
-"""
 
 import csv
 import json

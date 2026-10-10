@@ -1,15 +1,3 @@
-"""
-Grava no banco as coordenadas preenchidas à mão em locais_para_preencher_manual.csv.
-
-Uso:
-    python aplicar_coordenadas_manuais.py
-
-Só olha linhas com latitude E longitude preenchidas. Aceita ponto ou vírgula
-decimal ("-4.82" ou "-4,82"). Identifica o local por município+zona+cód. local
-(não pelo texto do nome, que pode ter acento corrompido ao salvar no Excel).
-Recusa coordenada fora do Piauí ou longe dos outros locais do município.
-"""
-
 import csv
 import os
 import sys
@@ -31,7 +19,6 @@ def numero(txt):
 
 
 def main():
-    # utf-8-sig (arquivo que geramos) ou cp1252 (se o Excel regravou como "CSV" comum)
     try:
         texto = open(ARQUIVO, encoding="utf-8-sig").read()
     except UnicodeDecodeError:
@@ -50,7 +37,7 @@ def main():
             recusadas += 1
             continue
         if lat is None and lon is None:
-            continue                                   # ainda não preenchida
+            continue                                   
         if lat is None or lon is None:
             print(f"  [recusado] {r['municipio']} / {r['local']}: falta latitude ou longitude")
             recusadas += 1
