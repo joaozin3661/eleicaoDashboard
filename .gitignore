@@ -1,0 +1,21 @@
+# Segredos
+.env
+
+# Dados brutos do TSE (centenas de MB; o README explica onde baixar)
+*.csv
+!locais_para_preencher_manual.csv
+bweb_*/
+candidato*/
+perfil_eleitor_*/
+eleitorado_local_votacao_*
+
+# Caches e saídas locais
+__pycache__/
+*.pyc
+geocodificacao_cache.json
+geocodificacao_log.csv
+
+# Front-end (quando existir)
+node_modules/
+.next/
+web/out/
