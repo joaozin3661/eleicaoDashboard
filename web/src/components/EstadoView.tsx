@@ -38,7 +38,9 @@ const colunasCandidatos: ColumnDef<LinhaCandidato>[] = [
     cell: ({ row }) => (
       <div>
         <div className="font-medium">{row.original.nome}</div>
-        <div className="text-xs text-zinc-500">{row.original.completo}</div>
+        {row.original.completo && row.original.completo !== row.original.nome && (
+          <div className="text-xs text-zinc-500">{row.original.completo}</div>
+        )}
       </div>
     ),
   },

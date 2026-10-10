@@ -37,8 +37,6 @@ ELEICOES = {
         "boletim_urna":   {
             1: "bweb_1t_PI_051020261403/BoletimUrnaPIbweb_1t_PI_051020261403.csv",
         },
-        "candidatos":     ["candidatoPI2026/consulta_cand_2026_PI.csv",
-                           "candidatoBR2026/consulta_cand_2026_BR.csv"],
         "perfil_eleitor": "perfil_eleitor_secao_2026_PI/perfil_eleitor_secao_2026_PI.csv",
         # Opcional: endereço, bairro, CEP e coordenadas dos locais (cadastro do TSE)
         "locais_votacao": "eleitorado_local_votacao_2026_PI.csv",
@@ -85,79 +83,6 @@ CREATE TABLE IF NOT EXISTS boletim_urna (
     dt_encerramento               TIMESTAMP,
     dt_emissao_bu                 TIMESTAMP,
     qt_elei_biom_sem_habilitacao  INTEGER
-);
- 
--- Candidatos (PI + BR juntos)
--- Pessoa física: persiste entre eleições (chave natural = CPF).
--- Preenchida a partir das candidaturas em vincular_pessoas().
-CREATE TABLE IF NOT EXISTS pessoas (
-    id_pessoa         BIGSERIAL PRIMARY KEY,
-    nr_cpf            CHAR(11) UNIQUE,
-    nr_titulo_eleitor VARCHAR(12),
-    nm_completo       TEXT NOT NULL,
-    dt_nascimento     DATE,
-    sg_uf_nascimento  CHAR(2),
-    nm_normalizado    TEXT,                           -- nome sem acento/pontuação (ver norm_nome)
-    origem_identidade TEXT NOT NULL DEFAULT 'cpf',    -- 'cpf' | 'nome_nascimento'
-    revisar           BOOLEAN NOT NULL DEFAULT FALSE  -- identidade incerta: conferir à mão
-);
-
--- Bancos criados antes da regra de identidade
-ALTER TABLE pessoas ADD COLUMN IF NOT EXISTS nm_normalizado TEXT;
-ALTER TABLE pessoas ADD COLUMN IF NOT EXISTS origem_identidade TEXT NOT NULL DEFAULT 'cpf';
-ALTER TABLE pessoas ADD COLUMN IF NOT EXISTS revisar BOOLEAN NOT NULL DEFAULT FALSE;
-
--- Normaliza nomes para comparação: MAIÚSCULAS, sem acento, só letras e dígitos
-CREATE OR REPLACE FUNCTION norm_nome(t TEXT) RETURNS TEXT
-LANGUAGE sql IMMUTABLE AS $f$
-    SELECT regexp_replace(
-        translate(upper(t),
-                  'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ',
-                  'AAAAAEEEEIIIIOOOOOUUUUCN'),
-        '[^A-Z0-9]', '', 'g')
-$f$;
-
-UPDATE pessoas SET nm_normalizado = norm_nome(nm_completo) WHERE nm_normalizado IS NULL;
-CREATE INDEX IF NOT EXISTS idx_pessoas_nome_nasc ON pessoas (nm_normalizado, dt_nascimento);
-
--- Candidatura: uma pessoa disputando um cargo em UMA eleição.
--- sq_candidato só é único dentro do ano, por isso a PK composta.
-CREATE TABLE IF NOT EXISTS candidaturas (
-    id_pessoa            BIGINT REFERENCES pessoas(id_pessoa),
-    ano_eleicao          SMALLINT,
-    nr_turno             SMALLINT,
-    sg_uf                CHAR(2),
-    sg_ue                VARCHAR(10),
-    nm_ue                TEXT,
-    cd_cargo             SMALLINT,
-    ds_cargo             TEXT,
-    sq_candidato         BIGINT,
-    cd_situacao_candidatura SMALLINT,
-    ds_situacao_candidatura TEXT,
-    nr_candidato         INTEGER,
-    nm_candidato         TEXT,
-    nm_urna_candidato    TEXT,
-    tp_abrangencia       VARCHAR(20),
-    nr_partido           SMALLINT,
-    sg_partido           VARCHAR(20),
-    nm_partido           TEXT,
-    nm_federacao         TEXT,
-    sg_federacao         TEXT,
-    nm_coligacao         TEXT,
-    dt_nascimento        DATE,
-    cd_genero            SMALLINT,
-    ds_genero            TEXT,
-    cd_grau_instrucao    SMALLINT,
-    ds_grau_instrucao    TEXT,
-    cd_estado_civil      SMALLINT,
-    ds_estado_civil      TEXT,
-    cd_cor_raca          SMALLINT,
-    ds_cor_raca          TEXT,
-    cd_ocupacao          INTEGER,
-    ds_ocupacao          TEXT,
-    cd_sit_tot_turno     SMALLINT,
-    ds_sit_tot_turno     TEXT,
-    PRIMARY KEY (ano_eleicao, sq_candidato)
 );
  
 -- Perfil do eleitor por seção (usado para pegar NM_LOCAL_VOTACAO)
@@ -238,28 +163,6 @@ COLUNAS_BOLETIM = [
     "DT_EMISSAO_BU", "QT_ELEI_BIOM_SEM_HABILITACAO",
 ]
  
-COLUNAS_CANDIDATOS = [
-    "ANO_ELEICAO", "NR_TURNO", "SG_UF", "SG_UE", "NM_UE",
-    "CD_CARGO", "DS_CARGO", "SQ_CANDIDATO", "NR_CANDIDATO",
-    "NM_CANDIDATO", "NM_URNA_CANDIDATO", "TP_ABRANGENCIA",
-    "NR_PARTIDO", "SG_PARTIDO", "NM_PARTIDO",
-    "NM_FEDERACAO", "SG_FEDERACAO", "NM_COLIGACAO",
-    "DT_NASCIMENTO", "CD_GENERO", "DS_GENERO",
-    "CD_GRAU_INSTRUCAO", "DS_GRAU_INSTRUCAO",
-    "CD_ESTADO_CIVIL", "DS_ESTADO_CIVIL",
-    "CD_COR_RACA", "DS_COR_RACA",
-    "CD_OCUPACAO", "DS_OCUPACAO",
-    "CD_SIT_TOT_TURNO", "DS_SIT_TOT_TURNO",
-    "NR_CPF_CANDIDATO", "NR_TITULO_ELEITORAL_CANDIDATO", "SG_UF_NASCIMENTO",
-    "CD_SITUACAO_CANDIDATURA", "DS_SITUACAO_CANDIDATURA",
-]
-
-# Só existem no staging (dado pessoal: vai para `pessoas`, não para candidaturas)
-COLUNAS_STAGING_PESSOA = [
-    "NR_CPF_CANDIDATO", "NR_TITULO_ELEITORAL_CANDIDATO", "SG_UF_NASCIMENTO",
-]
-COLUNAS_CANDIDATURAS = [c for c in COLUNAS_CANDIDATOS if c not in COLUNAS_STAGING_PESSOA]
-
 # Nome da coluna de ano em cada CSV -> coluna ano_eleicao da tabela
 RENOMEAR_PERFIL = {"AA_ELEICAO": "ANO_ELEICAO"}
  
@@ -370,222 +273,21 @@ def importar_csv(conn, tabela, arquivo, colunas, ano, renomear=None,
     print(f"  ✓ Total importado: {total:,} linhas")
 
 
-# Pessoas identificáveis sem ambiguidade por nome normalizado + nascimento
-_PESSOAS_UNICAS = """
-    SELECT nm_normalizado, dt_nascimento, min(id_pessoa) AS id_pessoa
-    FROM pessoas
-    WHERE dt_nascimento IS NOT NULL
-    GROUP BY nm_normalizado, dt_nascimento
-    HAVING count(*) = 1
-"""
-
-
-def vincular_identidades(cur, ano):
-    """Descobre a pessoa de cada candidatura do staging (preenche stg.id_pessoa).
-
-    Regra de identidade, em ordem de prioridade:
-      1. CPF válido (11 dígitos, não repetido) -> mesma pessoa = mesmo CPF.
-         Se já existe uma pessoa SEM CPF com o mesmo nome+nascimento, ela é a
-         mesma e recebe o CPF (fusão).
-      2. Sem CPF: mesma pessoa se existe EXATAMENTE UMA pessoa com o mesmo
-         nome normalizado (sem acento/caixa/pontuação) e a mesma data de
-         nascimento. Se houver 2+ (homônimos), não adivinha.
-      3. Sem correspondência: cria pessoa nova (origem 'nome_nascimento').
-         Fica com revisar=TRUE se não há data de nascimento ou se havia
-         ambiguidade — nesses casos a ligação precisa de conferência manual.
-    """
-    stats = {}
-
-    # Limpa CPF inválido (vazio, mascarado, 00000000000...) e calcula a chave de nome
-    cur.execute(r"""
-        UPDATE stg_candidaturas SET
-            nr_cpf_candidato = CASE
-                WHEN nr_cpf_candidato ~ '^[0-9]{11}$'
-                 AND nr_cpf_candidato !~ '^([0-9])\1{10}$'
-                THEN nr_cpf_candidato END,
-            nm_norm = norm_nome(nm_candidato)
-    """)
-
-    # 1a. fusão: CPF novo que pertence a uma pessoa antes cadastrada sem CPF
-    cur.execute(f"""
-        UPDATE pessoas p SET nr_cpf = m.cpf,
-               nr_titulo_eleitor = COALESCE(m.titulo, p.nr_titulo_eleitor),
-               origem_identidade = 'cpf', revisar = FALSE
-        FROM (
-            SELECT DISTINCT ON (id_pessoa) id_pessoa, cpf, titulo FROM (
-                SELECT DISTINCT ON (s.nr_cpf_candidato)
-                       s.nr_cpf_candidato AS cpf,
-                       s.nr_titulo_eleitoral_candidato AS titulo,
-                       u.id_pessoa
-                FROM stg_candidaturas s
-                JOIN ({_PESSOAS_UNICAS}) u
-                  ON u.nm_normalizado = s.nm_norm
-                 AND u.dt_nascimento  = s.dt_nascimento
-                WHERE s.nr_cpf_candidato IS NOT NULL
-                  AND NOT EXISTS (SELECT 1 FROM pessoas q
-                                  WHERE q.nr_cpf = s.nr_cpf_candidato)
-                ORDER BY s.nr_cpf_candidato
-            ) a ORDER BY id_pessoa
-        ) m
-        WHERE p.id_pessoa = m.id_pessoa AND p.nr_cpf IS NULL
-    """)
-    stats["cpf_fundido_em_pessoa_sem_cpf"] = cur.rowcount
-
-    # 1b. pessoas novas com CPF + ligação por CPF
-    cur.execute("""
-        INSERT INTO pessoas (nr_cpf, nr_titulo_eleitor, nm_completo, dt_nascimento,
-                             sg_uf_nascimento, nm_normalizado, origem_identidade)
-        SELECT DISTINCT ON (nr_cpf_candidato)
-               nr_cpf_candidato, nr_titulo_eleitoral_candidato, nm_candidato,
-               dt_nascimento, sg_uf_nascimento, nm_norm, 'cpf'
-        FROM stg_candidaturas
-        WHERE nr_cpf_candidato IS NOT NULL
-        ORDER BY nr_cpf_candidato, sq_candidato DESC
-        ON CONFLICT (nr_cpf) DO NOTHING
-    """)
-    cur.execute("""
-        UPDATE stg_candidaturas s SET id_pessoa = p.id_pessoa
-        FROM pessoas p WHERE p.nr_cpf = s.nr_cpf_candidato
-    """)
-    stats["por_cpf"] = cur.rowcount
-
-    # 2. sem CPF: nome normalizado + nascimento, só se a correspondência é única
-    cur.execute(f"""
-        UPDATE stg_candidaturas s SET id_pessoa = u.id_pessoa
-        FROM ({_PESSOAS_UNICAS}) u
-        WHERE s.id_pessoa IS NULL
-          AND u.nm_normalizado = s.nm_norm
-          AND u.dt_nascimento  = s.dt_nascimento
-    """)
-    stats["por_nome_nascimento"] = cur.rowcount
-
-    # 3. o que sobrou vira pessoa nova. Mesmo nome+nascimento no próprio
-    #    staging compartilha o id; sem nascimento, cada candidatura é uma pessoa.
-    cur.execute("""
-        WITH g AS (
-            SELECT nm_norm, dt_nascimento,
-                   nextval(pg_get_serial_sequence('pessoas', 'id_pessoa')) AS id
-            FROM (SELECT DISTINCT nm_norm, dt_nascimento FROM stg_candidaturas
-                  WHERE id_pessoa IS NULL AND dt_nascimento IS NOT NULL) x
-        )
-        UPDATE stg_candidaturas s SET id_pessoa = g.id
-        FROM g
-        WHERE s.id_pessoa IS NULL
-          AND g.nm_norm = s.nm_norm AND g.dt_nascimento = s.dt_nascimento
-    """)
-    novas = cur.rowcount
-    cur.execute("""
-        UPDATE stg_candidaturas
-        SET id_pessoa = nextval(pg_get_serial_sequence('pessoas', 'id_pessoa'))
-        WHERE id_pessoa IS NULL
-    """)
-    stats["pessoa_nova_sem_cpf"] = novas + cur.rowcount
-    cur.execute("""
-        INSERT INTO pessoas (id_pessoa, nm_completo, dt_nascimento, sg_uf_nascimento,
-                             nm_normalizado, origem_identidade, revisar)
-        SELECT DISTINCT ON (s.id_pessoa)
-               s.id_pessoa, s.nm_candidato, s.dt_nascimento, s.sg_uf_nascimento,
-               s.nm_norm, 'nome_nascimento',
-               s.dt_nascimento IS NULL OR EXISTS (
-                   SELECT 1 FROM pessoas q
-                   WHERE q.nm_normalizado = s.nm_norm
-                     AND q.dt_nascimento = s.dt_nascimento)
-        FROM stg_candidaturas s
-        WHERE s.id_pessoa NOT IN (SELECT id_pessoa FROM pessoas)
-        ORDER BY s.id_pessoa, s.sq_candidato DESC
-    """)
-    stats["pessoas_para_revisar"] = None
-    cur.execute("SELECT count(*) FROM pessoas WHERE revisar")
-    stats["pessoas_para_revisar"] = cur.fetchone()[0]
-    return stats
-
-
-def importar_candidaturas(conn, ano, arquivos):
-    """Importa os CSVs de candidatos de um ano (PI + BR) e liga às pessoas.
-
-    1) carrega tudo numa tabela temporária (staging), com CPF/título;
-    2) descobre a pessoa de cada candidatura (vincular_identidades);
-    3) troca as candidaturas do ano pelas do staging, na mesma transação.
-    """
-    with conn.cursor() as cur:
-        cur.execute("DROP TABLE IF EXISTS pg_temp.stg_candidaturas")
-        cur.execute("CREATE TEMP TABLE stg_candidaturas AS "
-                    "SELECT * FROM candidaturas WITH NO DATA")
-        cur.execute("""
-            ALTER TABLE stg_candidaturas
-                ADD COLUMN nr_cpf_candidato CHAR(11),
-                ADD COLUMN nr_titulo_eleitoral_candidato VARCHAR(12),
-                ADD COLUMN sg_uf_nascimento CHAR(2),
-                ADD COLUMN nm_norm TEXT
-        """)
-    conn.commit()
-
-    for arq in arquivos:
-        importar_csv(conn, "stg_candidaturas", arq, COLUNAS_CANDIDATOS, ano,
-                     apagar_ano=False)
-
-    print(f"\n→ Vinculando candidaturas de {ano} a pessoas ...")
-    cols = ",".join(c.lower() for c in COLUNAS_CANDIDATURAS)
-    cols_s = ",".join("s." + c.lower() for c in COLUNAS_CANDIDATURAS)
-    try:
-        with conn.cursor() as cur:
-            stats = vincular_identidades(cur, ano)
-            cur.execute("DELETE FROM candidaturas WHERE ano_eleicao = %s", (ano,))
-            cur.execute(f"""
-                INSERT INTO candidaturas (id_pessoa, {cols})
-                SELECT s.id_pessoa, {cols_s} FROM stg_candidaturas s
-            """)
-            cur.execute("DROP TABLE stg_candidaturas")
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    print(f"  ✓ Candidaturas de {ano} gravadas")
-    print(f"    ligadas por CPF .................. {stats['por_cpf']}")
-    print(f"    ligadas por nome + nascimento .... {stats['por_nome_nascimento']}")
-    print(f"    pessoas novas sem CPF ............ {stats['pessoa_nova_sem_cpf']}")
-    print(f"    CPF adicionado a pessoa antiga ... {stats['cpf_fundido_em_pessoa_sem_cpf']}")
-    print(f"    pessoas a revisar (total no banco) {stats['pessoas_para_revisar']}")
-
-
-VIEWS = """
--- Cargos que aparecem na urna (vice/suplentes NÃO têm voto próprio:
--- cd_cargo 2=vice-pres., 4=vice-gov., 9/10=suplentes de senador).
-CREATE OR REPLACE VIEW v_candidaturas_votaveis AS
-SELECT DISTINCT ON (ano_eleicao, cd_cargo, nr_candidato, chave_nome) *
-FROM (
-    SELECT *, regexp_replace(nm_urna_candidato, '[^[:alnum:]]', '', 'g') AS chave_nome
-    FROM candidaturas
-    WHERE cd_cargo IN (1, 3, 5, 6, 7)
-) t
-ORDER BY ano_eleicao, cd_cargo, nr_candidato, chave_nome, sq_candidato DESC;
-
--- Votos nominais já ligados à candidatura e à pessoa.
--- Chave do vínculo: ano + cargo + número + nome de urna
--- (o número sozinho repete; o nome desempata substituições e re-registros.
--- O nome é comparado sem pontuação/espaços: o TSE troca aspas por espaço
--- no cadastro, ex.: DEUSIMAR 'O TERERÉ' vs DEUSIMAR  O TERERÉ).
-CREATE OR REPLACE VIEW v_votos_candidato AS
-SELECT b.ano_eleicao, b.nr_turno, b.cd_municipio, b.nm_municipio, b.nr_zona,
-       b.nr_secao, b.nr_local_votacao, b.cd_cargo_pergunta AS cd_cargo,
-       c.sq_candidato, c.id_pessoa, c.nm_urna_candidato, c.sg_partido,
-       b.qt_votos
-FROM boletim_urna b
-JOIN v_candidaturas_votaveis c
-  ON c.ano_eleicao = b.ano_eleicao
- AND c.cd_cargo    = b.cd_cargo_pergunta
- AND c.nr_candidato = b.nr_votavel
- AND c.chave_nome = regexp_replace(b.nm_votavel, '[^[:alnum:]]', '', 'g')
-WHERE b.ds_tipo_votavel = 'Nominal';
-"""
-
-
 def criar_views(conn):
+    """Cria as views de votos por candidato. Dependem de `candidaturas`, que é gravada por
+    importar_candidatos_historico.py --gravar (esquema novo de pessoas e candidaturas)."""
+    from gravar_candidatos import VIEWS
     print("\n→ Criando views ...")
     with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass('candidaturas') IS NOT NULL")
+        if not cur.fetchone()[0]:
+            print("  [AVISO] tabela candidaturas não existe: rode antes "
+                  "python importar_candidatos_historico.py --gravar")
+            return
         cur.execute(VIEWS)
     conn.commit()
     print("  ✓ v_candidaturas_votaveis, v_votos_candidato")
+
 
 
 # Limites do Piauí (com folga) para recusar coordenadas obviamente erradas
@@ -731,10 +433,6 @@ def criar_indices(conn):
         "CREATE INDEX IF NOT EXISTS idx_bu_local      ON boletim_urna (nr_local_votacao);",
         "CREATE INDEX IF NOT EXISTS idx_bu_cargo      ON boletim_urna (cd_cargo_pergunta);",
         "CREATE INDEX IF NOT EXISTS idx_bu_votavel    ON boletim_urna (nr_votavel);",
-        "CREATE INDEX IF NOT EXISTS idx_cand_nr       ON candidaturas (nr_candidato);",
-        "CREATE INDEX IF NOT EXISTS idx_cand_cargo    ON candidaturas (cd_cargo);",
-        "CREATE INDEX IF NOT EXISTS idx_cand_uf       ON candidaturas (sg_uf);",
-        "CREATE INDEX IF NOT EXISTS idx_cand_pessoa   ON candidaturas (id_pessoa);",
         "CREATE INDEX IF NOT EXISTS idx_perf_local    ON perfil_eleitor (nr_local_votacao);",
         "CREATE INDEX IF NOT EXISTS idx_perf_mun      ON perfil_eleitor (cd_municipio);",
     ]
@@ -757,7 +455,6 @@ def importar_ano(conn, ano, so_turno=None):
     print("-" * 60)
 
     if so_turno is None:
-        importar_candidaturas(conn, ano, arq["candidatos"])
         importar_csv(conn, "perfil_eleitor", arq["perfil_eleitor"], COLUNAS_PERFIL,
                      ano, renomear=RENOMEAR_PERFIL)
         criar_locais_votacao(conn)   # só acrescenta locais novos (preserva geocodificação)

@@ -24,7 +24,7 @@ export type Candidato = {
   nr: number; // número
   c: number; // código do cargo
   nc: string; // nome completo
-  pessoa: number;
+  pessoa: string; // slug público da pessoa
 };
 
 /** [sq_candidato, votos] */

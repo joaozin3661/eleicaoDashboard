@@ -19,3 +19,12 @@ geocodificacao_log.csv
 node_modules/
 .next/
 web/out/
+
+# Arquivos brutos do TSE de outros anos (zips, .txt antigos, layouts) — nunca versionar
+*.zip
+consulta_cand*
+votacao_*
+detalhe_*
+
+# Relatórios de identidade (contêm CPF e título)
+relatorio_identidade/

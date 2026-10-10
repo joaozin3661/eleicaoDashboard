@@ -40,7 +40,9 @@ Requisitos: Python 3.11+, PostgreSQL, `pip install pg8000 pandas`.
 cp .env.example .env           # preencha PGPASSWORD (o .env nunca vai para o git)
 # crie o banco:  CREATE DATABASE joaoeleicao;
 
-python importar_TSE.py 2026    # importa 2026 (reexecutar recarrega só esse ano)
+python importar_candidatos_historico.py          # teste: relatório de identidade (nada é gravado)
+python importar_candidatos_historico.py --gravar # grava pessoas e candidaturas (2000–2026)
+python importar_TSE.py 2026    # importa 2026: votos, perfil e locais (reexecutar recarrega só esse ano)
 python geocodificar_locais.py --gravar            # coordenadas dos locais sem latitude/longitude
 python aplicar_coordenadas_manuais.py             # opcional: coordenadas preenchidas à mão
 python exportar_json.py        # gera web/public/data (confere os totais contra o banco)
@@ -66,13 +68,21 @@ Para publicar em um subcaminho (ex.: GitHub Pages), defina `NEXT_PUBLIC_BASE_PAT
 
 | Tabela / view | O que guarda |
 |---|---|
-| `pessoas` | Uma linha por pessoa (chave: CPF; sem CPF, nome + nascimento). Sobrevive entre eleições. **Nunca é exportada.** |
-| `candidaturas` | Uma pessoa disputando um cargo em uma eleição. PK `(ano_eleicao, sq_candidato)`. |
+| `pessoas` | Uma linha por pessoa, com `slug` público aleatório e nome de exibição. Sobrevive entre eleições. |
+| `pessoa_identificadores` | CPFs, títulos e chaves já vistos de cada pessoa: a "ponte" entre anos. **Nunca é exportada.** |
+| `candidaturas` | Uma pessoa disputando um cargo em uma eleição/turno. Chave: ano + data + turno + unidade + cargo + `sq_candidato` (o `sq_candidato` sozinho repete). |
 | `boletim_urna` | Votos por seção (bruto do TSE). |
 | `perfil_eleitor` | Perfil do eleitorado por seção. |
 | `locais_votacao` | Local de votação: endereço, bairro, coordenadas, tipo e precisão da coordenada. |
 | `v_candidaturas_votaveis` / `v_votos_candidato` | Ligam os votos à candidatura e à pessoa (vices e suplentes não aparecem na urna). |
 | `resumo_*` | Tabelas de totais criadas pelo exportador. |
+
+### Identidade entre eleições
+Candidaturas de anos diferentes são ligadas à mesma pessoa quando **dois sinais concordam** (CPF, título de
+eleitor, data de nascimento, nome). Nenhum sozinho basta: o TSE comete erros de digitação nos quatro, oculta o
+CPF em alguns anos (2024) e as numerações mudam. Casos duvidosos vão para uma fila de revisão, e decisões
+manuais ficam em `decisoes_identidade.csv` (local, não versionado). O nome de exibição é o mais recente (ou o
+nome social); quem tem o nome social protegido pelo TSE aparece só pelo nome de urna.
 
 ### Decisões que valem saber
 - **Número de candidato não é único** (o 13 é Governador, Vice, Presidente...). O vínculo voto → candidato

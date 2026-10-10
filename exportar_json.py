@@ -116,9 +116,15 @@ def main(saida):
         print(f"\n→ Eleição {ano}, turno {turno}")
 
         # -- candidatos (somente os que aparecem na urna; sem CPF/título) 
-        cands = consulta("""SELECT sq_candidato, nm_urna_candidato AS n, sg_partido AS p,
-                                   nr_candidato AS nr, cd_cargo AS c, nm_candidato AS nc, id_pessoa AS pessoa
-                            FROM v_candidaturas_votaveis WHERE ano_eleicao = %s""", (ano,))
+        # nc = nome de exibição da pessoa (nunca o nome de registro antigo). Quem teve o nome social
+        # protegido pelo TSE só aparece pelo nome de urna. `pessoa` é o slug público (aleatório).
+        cands = consulta("""SELECT c.sq_candidato, c.nm_urna_candidato AS n, c.sg_partido AS p,
+                                   c.nr_candidato AS nr, c.cd_cargo AS c,
+                                   CASE WHEN p.ocultar_nome_registro THEN c.nm_urna_candidato
+                                        ELSE p.nm_exibicao END AS nc,
+                                   p.slug AS pessoa
+                            FROM v_candidaturas_votaveis c JOIN pessoas p USING (id_pessoa)
+                            WHERE c.ano_eleicao = %s""", (ano,))
         gravar(os.path.join(saida, f"candidatos-{ano}.json"),
                {str(c["sq_candidato"]): {k: c[k] for k in ("n", "p", "nr", "c", "nc", "pessoa")}
                 for c in cands})
