@@ -3,8 +3,9 @@
 Painel público com os resultados das eleições de 2026 no Piauí por **município, zona eleitoral e
 local de votação**, com mapa. Os dados vêm do Portal de Dados Abertos do TSE.
 
-> **Status:** pipeline de dados pronto (importação, geocodificação, exportação).
-> O site (Next.js) ainda não foi construído.
+> **Status:** pipeline de dados e site estático prontos para o 1º turno de 2026
+> (página do estado por cargo; página de cada município com mapa e tabela por local de votação).
+> Faltam: 2º turno, Vereador (2024), página do candidato e linha do tempo de carreira.
 
 ## Como funciona
 
@@ -46,6 +47,20 @@ python exportar_json.py        # gera web/public/data (confere os totais contra 
 ```
 
 `python importar_TSE.py 2026:2` carrega só o boletim do 2º turno (configure o arquivo em `ELEICOES`).
+
+## Site (pasta `web/`)
+
+Next.js (export estático) + TypeScript + Tailwind, Recharts (gráficos), TanStack Table (tabelas) e
+Leaflet/OpenStreetMap (mapa). As páginas leem os JSON de `web/public/data` **no build**.
+
+```bash
+cd web
+npm install
+npm run dev      # desenvolvimento em http://localhost:3000
+npm run build    # gera web/out (site estático, pronto para hospedar)
+```
+
+Para publicar em um subcaminho (ex.: GitHub Pages), defina `NEXT_PUBLIC_BASE_PATH=/nome-do-repo` antes do build.
 
 ## Modelo de dados
 
