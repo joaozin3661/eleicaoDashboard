@@ -15,7 +15,7 @@ export type Index = {
   fonte: string;
   dados_gerados_em: string;
   eleicoes: { ano: number; turno: number; cargos: Cargo[] }[];
-  municipios: { cd: number; nome: string }[];
+  municipios: { cd: number; nome: string; lat: number | null; lon: number | null }[];
 };
 
 export type Candidato = {
@@ -36,7 +36,14 @@ export type Estado = {
   cargo: Cargo;
   totais: Totais;
   candidatos: VotoCandidato[];
-  municipios: { cd: number; nome: string; totais: Totais; top: VotoCandidato[] }[];
+  municipios: {
+    cd: number;
+    nome: string;
+    totais: Totais;
+    top: VotoCandidato[];
+    /** votos, neste município, dos candidatos mais votados do estado */
+    principais: VotoCandidato[];
+  }[];
 };
 
 export type LocalVotacao = {
@@ -68,3 +75,6 @@ export type Municipio = {
   locais: LocalVotacao[];
   cargos: Record<string, CargoMunicipio>;
 };
+
+/** Item do índice de busca: m = município, c = candidato, l = local de votação. */
+export type ItemBusca = { t: "m" | "c" | "l"; n: string; s: string; u: string };

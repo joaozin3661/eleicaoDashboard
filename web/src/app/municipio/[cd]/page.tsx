@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import MunicipioView from "@/components/MunicipioView";
@@ -39,7 +40,9 @@ export default async function PaginaMunicipio({ params }: { params: Promise<{ cd
           Eleições {ano} · {turno}º turno
         </p>
       </div>
-      <MunicipioView municipio={municipio} cargos={cargos} candidatos={candidatos} />
+      <Suspense>
+        <MunicipioView municipio={municipio} cargos={cargos} candidatos={candidatos} />
+      </Suspense>
     </div>
   );
 }

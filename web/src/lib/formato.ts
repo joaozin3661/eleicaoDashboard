@@ -61,3 +61,12 @@ export const PRECISAO: Record<string, string> = {
 
 /** Pontos que não indicam o prédio com exatidão. */
 export const APROXIMADA = new Set(["rua", "povoado", "municipio"]);
+
+/** Diferença, em pontos percentuais, entre o 1º e o 2º colocado (sobre os votos válidos). */
+export function margemPP(votos: number[], totalValidos: number): number {
+  if (votos.length === 0 || totalValidos <= 0) return 0;
+  const [a, b = 0] = [...votos].sort((x, y) => y - x);
+  return (100 * (a - b)) / totalValidos;
+}
+
+export const fmtPP = (n: number) => n.toFixed(1).replace(".", ",") + " pp";

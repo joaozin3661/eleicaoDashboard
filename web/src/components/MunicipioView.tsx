@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import Cartoes from "./Cartoes";
 import GraficoCandidatos from "./GraficoCandidatos";
 import type { PontoLocal } from "./MapaLocais";
 import SeletorCargo from "./SeletorCargo";
 import Tabela from "./Tabela";
-import { APROXIMADA, PRECISAO, corPartido, fmt, validos } from "@/lib/formato";
+import { APROXIMADA, PRECISAO, corPartido, fmt, fmtPP, margemPP, validos } from "@/lib/formato";
 import type { Candidato, Cargo, Municipio } from "@/lib/tipos";
 
 // Leaflet precisa do navegador (window), então o mapa só é carregado no cliente.
@@ -28,6 +29,7 @@ type LinhaLocal = {
   vencedor: string;
   partido: string;
   pct: number;
+  margem: number;
   precisao: string;
 };
 
@@ -64,17 +66,18 @@ const colunas: ColumnDef<LinhaLocal>[] = [
     ),
   },
   { header: "% dele", accessorKey: "pct", cell: ({ getValue }) => getValue<number>().toFixed(1).replace(".", ",") + "%" },
+  { header: "Margem", accessorKey: "margem", cell: ({ getValue }) => fmtPP(getValue<number>()) },
 ];
 
-export default function MunicipioView({
-  municipio,
-  cargos,
-  candidatos,
-}: {
-  municipio: Municipio;
-  cargos: Cargo[];
-  candidatos: Record<string, Candidato>;
-}) {
+type Props = { municipio: Municipio; cargos: Cargo[]; candidatos: Record<string, Candidato> };
+
+/** Lê ?q= da URL (link da busca por escola) e recria a tela quando muda. */
+export default function MunicipioView(props: Props) {
+  const params = useSearchParams();
+  return <MunicipioInterno key={params.toString()} {...props} buscaInicial={params.get("q") ?? ""} />;
+}
+
+function MunicipioInterno({ municipio, cargos, candidatos, buscaInicial }: Props & { buscaInicial: string }) {
   const disponiveis = cargos.filter((c) => municipio.cargos[String(c.cd)]);
   const [cargo, setCargo] = useState(disponiveis[0].cd);
   const dados = municipio.cargos[String(cargo)];
@@ -101,6 +104,7 @@ export default function MunicipioView({
         vencedor: cand?.n ?? "–",
         partido: cand?.p ?? "–",
         pct: validosLocal && votosVenc > 0 ? (100 * votosVenc) / validosLocal : 0,
+        margem: margemPP(entradas.map(([, n]) => n), validosLocal),
         precisao: local.prec ?? "",
       };
       return { linha, local };
@@ -187,7 +191,7 @@ export default function MunicipioView({
         <h2 className="text-lg font-semibold">
           Por local de votação <span className="text-sm font-normal text-zinc-500">({linhas.length} locais)</span>
         </h2>
-        <Tabela dados={linhas.map((l) => l.linha)} colunas={colunas} placeholderBusca="Buscar local ou bairro…" />
+        <Tabela dados={linhas.map((l) => l.linha)} colunas={colunas} placeholderBusca="Buscar local ou bairro…" filtroInicial={buscaInicial} />
       </section>
     </div>
   );

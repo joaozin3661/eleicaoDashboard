@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import EstadoView from "@/components/EstadoView";
 import { eleicaoAtual, lerCandidatos, lerEstado, lerIndex } from "@/lib/dados";
 import type { Estado } from "@/lib/tipos";
@@ -13,6 +14,9 @@ export default async function Home() {
   ]);
   const estados: Record<number, Estado> = Object.fromEntries(lista.map((e) => [e.cargo.cd, e]));
 
+  const posicoes: Record<number, { lat: number; lon: number }> = {};
+  for (const m of index.municipios) if (m.lat !== null && m.lon !== null) posicoes[m.cd] = { lat: m.lat, lon: m.lon };
+
   return (
     <div className="space-y-6">
       <div>
@@ -22,7 +26,10 @@ export default async function Home() {
           {index.dados_gerados_em.split("-").reverse().join("/")}).
         </p>
       </div>
-      <EstadoView cargos={cargos} estados={estados} candidatos={candidatos} />
+      {/* useSearchParams (links da busca) exige Suspense em site estático */}
+      <Suspense>
+        <EstadoView cargos={cargos} estados={estados} candidatos={candidatos} posicoes={posicoes} />
+      </Suspense>
     </div>
   );
 }

@@ -17,12 +17,13 @@ type Props<T> = {
   colunas: ColumnDef<T, any>[]; // eslint-disable-line @typescript-eslint/no-explicit-any
   placeholderBusca?: string;
   porPagina?: number;
+  filtroInicial?: string;
 };
 
 /** Tabela com busca, ordenação por coluna e paginação (TanStack Table). */
-export default function Tabela<T>({ dados, colunas, placeholderBusca = "Buscar…", porPagina = 15 }: Props<T>) {
+export default function Tabela<T>({ dados, colunas, placeholderBusca = "Buscar…", porPagina = 15, filtroInicial = "" }: Props<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [filtro, setFiltro] = useState("");
+  const [filtro, setFiltro] = useState(filtroInicial);
 
   const tabela = useReactTable({
     data: dados,

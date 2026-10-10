@@ -2,6 +2,7 @@
 
 import json
 import os
+from urllib.parse import quote
 import shutil
 import sys
 
@@ -10,6 +11,7 @@ import db
 sys.stdout.reconfigure(encoding="utf-8")
 
 PASTA = os.path.dirname(os.path.abspath(__file__))
+PRINCIPAIS = 8              # candidatos do estado cujo voto é detalhado em cada município
 TOP_MUNICIPIO = 10          # candidatos por município no resultado do estado (mapa de cores)
 
 SQL_RESUMOS = """
@@ -89,13 +91,22 @@ def main(saida):
     nome_mun = {m["cd"]: m["nome"] for m in municipios}
     gerado = consulta("SELECT max(dt_geracao) AS d FROM boletim_urna")[0]["d"]
 
+    centros = {r["cd"]: (r["lat"], r["lon"]) for r in consulta("""
+        SELECT cd_municipio AS cd,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY latitude)  AS lat,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY longitude) AS lon
+        FROM locais_votacao WHERE latitude IS NOT NULL GROUP BY 1""")}
+
     gravar(os.path.join(saida, "index.json"), {
         "fonte": "TSE - Dados Abertos (boletim de urna, candidatos, locais de votação)",
         "dados_gerados_em": str(gerado),
         "eleicoes": [{"ano": e["ano"], "turno": e["turno"],
                       "cargos": [{"cd": c, "nome": n} for c, n in sorted(cargos.items())]}
                      for e in eleicoes],
-        "municipios": [{"cd": m["cd"], "nome": m["nome"]} for m in municipios],
+        "municipios": [{"cd": m["cd"], "nome": m["nome"],
+                        "lat": round(centros[m["cd"]][0], 5) if m["cd"] in centros else None,
+                        "lon": round(centros[m["cd"]][1], 5) if m["cd"] in centros else None}
+                       for m in municipios],
     })
 
     problemas = []
@@ -120,6 +131,22 @@ def main(saida):
                              FROM locais_votacao""")
         info_local = {(l["cd_municipio"], l["nr_zona"], l["nr_local_votacao"]): l for l in locais}
 
+        busca = [{"t": "m", "n": m["nome"], "s": "Município", "u": f"/municipio/{m['cd']}/"}
+                 for m in municipios]
+        nome_cargo_de = dict(cargos)
+        for c in cands:
+            busca.append({"t": "c", "n": c["n"], "s": f"{c['p']} · {nome_cargo_de.get(c['c'], '')}",
+                          "u": f"/?cargo={c['c']}&q={quote(c['n'])}"})
+        for l in consulta("""SELECT DISTINCT r.cd_municipio, r.nr_zona, r.nr_local_votacao,
+                                    l.nm_local_votacao AS nome, l.bairro
+                             FROM resumo_local_cargo r
+                             JOIN locais_votacao l USING (cd_municipio, nr_zona, nr_local_votacao)
+                             WHERE r.ano_eleicao = %s AND r.nr_turno = %s""", (ano, turno)):
+            busca.append({"t": "l", "n": l["nome"],
+                          "s": f"{nome_mun[l['cd_municipio']]} · {l['bairro'] or ''}".strip(" ·"),
+                          "u": f"/municipio/{l['cd_municipio']}/?q={quote(l['nome'])}"})
+        gravar(os.path.join(saida, f"busca-{tag}.json"), busca)
+
         for cd_cargo, nome_cargo in sorted(cargos.items()):
             todos = consulta("""SELECT * FROM resumo_local_cargo
                                 WHERE ano_eleicao=%s AND nr_turno=%s AND cd_cargo=%s""",
@@ -135,17 +162,21 @@ def main(saida):
                 votos_mun.setdefault(v["cd_municipio"], []).append(v)
 
             # ---- resultado do estado ----
-            total_cand, mun_resumo = {}, []
+            total_cand, mun_resumo, cand_por_mun = {}, [], {}
             for cd_mun in sorted(por_mun, key=lambda c: nome_mun[c]):
                 cand_mun = {}
                 for v in votos_mun.get(cd_mun, []):
                     cand_mun[v["sq_candidato"]] = cand_mun.get(v["sq_candidato"], 0) + v["votos"]
                     total_cand[v["sq_candidato"]] = total_cand.get(v["sq_candidato"], 0) + v["votos"]
+                cand_por_mun[cd_mun] = cand_mun
                 top = sorted(cand_mun.items(), key=lambda kv: (-kv[1], kv[0]))[:TOP_MUNICIPIO]
                 mun_resumo.append({"cd": cd_mun, "nome": nome_mun[cd_mun],
                                    "totais": somar(por_mun[cd_mun]),
                                    "top": [[str(sq), n] for sq, n in top]})
             todos_ord = sorted(total_cand.items(), key=lambda kv: (-kv[1], kv[0]))
+            for m in mun_resumo:   # votos dos principais do estado neste município (mapa "% de um candidato")
+                m["principais"] = [[str(sq), cand_por_mun[m["cd"]].get(sq, 0)]
+                                   for sq, _ in todos_ord[:PRINCIPAIS]]
             tot_estado = somar(todos)
             gravar(os.path.join(saida, "estado", f"{tag}-{cd_cargo}.json"), {
                 "ano": ano, "turno": turno, "cargo": {"cd": cd_cargo, "nome": nome_cargo},
